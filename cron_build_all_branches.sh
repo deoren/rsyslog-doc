@@ -11,6 +11,31 @@ set -e
 # Functions
 ##############################################################
 
+# Create local mirror if it does not already exist
+create_local_mirror() {
+
+    local_mirror_path=$1
+    remote_repo=$2
+
+    local_mirror_parent_dir=$(dirname $local_mirror_path)
+
+    if [[ -d $local_mirror_path ]]; then
+        echo "[i] Local mirror $local_mirror_path already exists. Continuing ... "
+    else
+
+        echo "Creating local mirror $local_mirror_path from $remote_repo ..."
+
+        mkdir -p "$local_mirror_parent_dir" ||
+            { echo "[!] Failed to create ${local_mirror_parent_dir} to hold local mirror ... aborting"; exit 1; }
+
+        git clone --mirror $remote_repo $local_mirror_path ||
+            { echo "[!] Failed to create ${local_mirror_path} local mirror ... aborting"; exit 1; }
+
+    fi
+
+
+}
+
 # Refresh mirror, create local/temporary clone for build work
 prep_for_build() {
 
@@ -20,7 +45,7 @@ prep_for_build() {
     temp_repo_location="$(dirname "$temp_repo")"
 
     if [[ ! -d $local_mirror ]]; then
-        echo "[!] Invalid local mirror path: $local_mirror"
+        echo "[!] Local mirror $local_mirror does not exist. Aborting ..."
         exit 1
     fi
 
@@ -163,6 +188,11 @@ temp_repo="$HOME/builds/rsyslog-doc"
 # Set to newlines only so spaces won't trigger a new array entry and so loops
 # will only consider items separated by newlines to be the next in the loop
 IFS=$'\n'
+
+
+# Create local mirror of remote Git repo to be used as source of
+# frequent local builds.
+create_local_mirror $local_mirror $remote_repo
 
 # Generates a clone from a local mirror of a remote Git repo
 prep_for_build $local_mirror $temp_repo
