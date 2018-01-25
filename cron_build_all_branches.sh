@@ -148,12 +148,12 @@ formats=(
 )
 
 remote_repo="https://github.com/deoren/rsyslog-doc"
-local_mirror="/home/scripts/rsyslog-doc-mirror.git"
+local_mirror="$HOME/rsyslog-doc-mirror.git"
 
 # Full path to the local clone that will be recreated for each
 # run of this build script. We pull from the local mirror
 # in order to reduce the load on the remote repo.
-temp_repo="/home/scripts/builds/rsyslog-doc"
+temp_repo="$HOME/builds/rsyslog-doc"
 
 
 ##############################################################
