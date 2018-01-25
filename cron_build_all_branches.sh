@@ -11,6 +11,44 @@ set -e
 # Functions
 ##############################################################
 
+# Refresh mirror, create local/temporary clone for build work
+prep_for_build() {
+
+    local_mirror=$1
+
+    temp_repo="$2"
+    temp_repo_location="$(dirname "$temp_repo")"
+
+    if [[ ! -d $local_mirror ]]; then
+        echo "[!] Invalid local mirror path: $local_mirror"
+        exit 1
+    fi
+
+    mkdir -p "${temp_repo_location}"
+
+    if [[ ! -d $temp_repo_location ]]; then
+        echo "[!] Invalid path for new clone: $temp_repo_location"
+        exit 1
+    fi
+
+    # Refresh content in local mirror
+    echo "Fetching latest changes from origin ..."
+
+    cd $local_mirror
+    git fetch origin --prune --tags  ||
+      { echo "[!] Failed to fetch changes from remote... aborting"; exit 1; }
+
+    cd "${temp_repo_location}"
+
+    # Toss old clone of our local mirror
+    echo "Pruing old temp repo: $temp_repo"
+    rm -rf "$temp_repo"
+
+    echo "Attempting to clone $local_mirror into $temp_repo ..."
+    git clone --shared "$local_mirror" "$temp_repo" ||
+      { echo "[!] Failed to clone from local mirror $local_mirror ... aborting"; exit 1; }
+}
+
 get_latest_stable_branch() {
 
     git branch -r | \
@@ -60,14 +98,11 @@ prep_branch_for_build() {
 
     branch=$1
 
-    echo "Reset Branch $branch"
-    git reset --hard
-
-    echo "Tossing all non-committed changes"
+    echo "Tossing all uncommitted changes"
     git clean --force -d
 
     echo "Checkout Branch $branch"
-    git checkout origin/$branch ||
+    git checkout -B $branch origin/$branch ||
       { echo "[!] Checkout $branch failed... aborting"; exit 1; }
 
 }
@@ -99,27 +134,41 @@ echo "Press Enter to continue or Ctrl-C to cancel...."
 read -r REPLY
 
 
-# Refresh local content
-echo "Fetching latest changes from origin ..."
-git fetch origin --prune --tags
-
-
 
 
 ##############################################################
-# Setup
+# Configuration: Custom user settings
+##############################################################
+
+# Formats that are built for each branch and for latest tag.
+declare -a formats
+formats=(
+  epub
+  html
+)
+
+remote_repo="https://github.com/deoren/rsyslog-doc"
+local_mirror="/home/scripts/rsyslog-doc-mirror.git"
+
+# Full path to the local clone that will be recreated for each
+# run of this build script. We pull from the local mirror
+# in order to reduce the load on the remote repo.
+temp_repo="/home/scripts/builds/rsyslog-doc"
+
+
+##############################################################
+# Auto-Configuration: No user modifications past this point
 ##############################################################
 
 # Set to newlines only so spaces won't trigger a new array entry and so loops
 # will only consider items separated by newlines to be the next in the loop
 IFS=$'\n'
 
-# Formats that are built by default for new releases
-declare -a formats
-formats=(
-  epub
-  html
-)
+# Generates a clone from a local mirror of a remote Git repo
+prep_for_build $local_mirror $temp_repo
+
+# Change our working directory to the new clone
+cd $temp_repo
 
 latest_stable_branch=$(get_latest_stable_branch)
 dev_branches=($(get_dev_branches))
@@ -230,12 +279,3 @@ sphinx-build -b html source build ||
 
 tar -czf $output_dir/$doc_tarball source build LICENSE README.md ||
     { echo "[!] tarball creation failed for $latest_stable_tag tag ... aborting"; exit 1; }
-
-
-
-###############################################################
-# Reset repo to master for next build
-###############################################################
-
-# This ensures that the build script is always at the latest version
-prep_branch_for_build master
