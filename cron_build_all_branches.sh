@@ -132,6 +132,30 @@ prep_branch_for_build() {
 
 }
 
+build_stable_branch() {
+
+    # Build latest stable tag (HTML only)
+    echo "Building latest stable tag: $latest_stable_tag"
+    git reset --hard
+    git clean --force -d
+    git checkout $latest_stable_tag
+
+    # This modified source/conf.py build conf is included in the
+    # tarball for later use by downstream package maintainers
+    # or anyone else that wishes to build from source using
+    # only the tarball (e.g., no .git directory or repo present)
+    update_build_conf_variables \
+        ${latest_stable_major_minor_version} \
+        $latest_stable_version \
+        ${sphinx_build_conf_prod}
+
+    sphinx-build -b html source build ||
+        { echo "[!] sphinx-build failed for html format of $latest_stable_tag tag ... aborting"; exit 1; }
+
+    tar -czf $output_dir/$doc_tarball source build LICENSE README.md ||
+        { echo "[!] tarball creation failed for $latest_stable_tag tag ... aborting"; exit 1; }
+}
+
 update_build_conf_variables() {
 
     version_string=$1
@@ -286,26 +310,5 @@ do
 done
 
 
-###############################################################
-# Build latest stable tag (HTML only)
-###############################################################
-
-echo "Building latest stable tag: $latest_stable_tag"
-git reset --hard
-git clean --force -d
-git checkout $latest_stable_tag
-
-# This modified source/conf.py build conf is included in the
-# tarball for later use by downstream package maintainers
-# or anyone else that wishes to build from source using
-# only the tarball (e.g., no .git directory or repo present)
-update_build_conf_variables \
-    ${latest_stable_major_minor_version} \
-    $latest_stable_version \
-    ${sphinx_build_conf_prod}
-
-sphinx-build -b html source build ||
-    { echo "[!] sphinx-build failed for html format of $latest_stable_tag tag ... aborting"; exit 1; }
-
-tar -czf $output_dir/$doc_tarball source build LICENSE README.md ||
-    { echo "[!] tarball creation failed for $latest_stable_tag tag ... aborting"; exit 1; }
+# Disabled for now as it does not appear to be needed.
+# build_stable_branch
