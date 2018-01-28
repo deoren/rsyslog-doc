@@ -11,6 +11,96 @@ set -e
 # Functions
 ##############################################################
 
+# http://stackoverflow.com/a/2990533
+# Used to print to the screen from within functions that rely on returning data
+# to a variable via stdout
+echoerr() { echo -e "$@" 1>&2; }
+
+record_reported_patches() {
+
+    # $@ is ALL arguments to this function, i.e., the unreported patches
+    updates=(${@})
+
+    # Add reported patches to the database
+
+    for update in "${updates[@]}"
+    do
+        sqlite3 ${DB_FILE} "INSERT INTO reported_updates (package) VALUES (\"${update}\");"
+    done
+
+}
+
+is_patch_already_reported() {
+
+    # $1 should equal the quoted patch that we're checking
+    # By this point it should have already been cleaned by sanitize_string()
+    patch_to_check="${1}"
+
+    if [[ "${DEBUG_ON}" -ne 0 ]]; then
+        echoerr "\n[I] Checking \"$1\" against previously reported updates ..."
+    fi
+
+    # Rely on the sanitized string having fields separated by spaces so we can
+    # grab the first field (no version info) and use that as a search term
+    package_prefix=$(echo ${1} | cut -d' ' -f 1)
+
+    sql_query_match_first_field="SELECT * FROM reported_updates WHERE package LIKE '${package_prefix}%' ORDER BY time DESC"
+
+    previously_reported_updates=($(sqlite3 "${DB_FILE}" "${sql_query_match_first_field}" | cut -d '|' -f 2))
+
+    for previously_reported_update in ${previously_reported_updates[@]}
+    do
+        if [[ "${VERBOSE_DEBUG_ON}" -ne 0 ]]; then
+            echoerr "[I] SQL QUERY MATCH:" $previously_reported_update
+        fi
+
+        # Assume that old database entries may need multiple spaces
+        # stripped from strings so we can accurately compare them
+        stripped_prev_reported_update=$(sanitize_string ${previously_reported_update})
+
+        # See if the selected patch has already been reported
+        if [[ "${stripped_prev_reported_update}" == "${patch_to_check}" ]]; then
+            # Report a match, and exit loop
+            return 0
+        fi
+    done
+
+    # If we get this far, report no match
+    return 1
+}
+
+initialize_db() {
+
+    if [[ "${DEBUG_ON}" -ne 0 ]]; then
+        echo -e '\n\n************************'
+        echo "Initializing Database"
+        echo -e   '************************'
+    fi
+
+    # Check if cache dir already exists
+    if [[ ! -d ${DB_FILE_DIR} ]]; then
+        if [[ "${DEBUG_ON}" -ne 0 ]]; then
+            echo "[I] Creating ${DB_FILE_DIR}"
+        fi
+        mkdir ${DB_FILE_DIR}
+    fi
+
+    # Check if database already exists
+    if [[ -f ${DB_FILE} ]]; then
+        if [[ "${DEBUG_ON}" -ne 0 ]]; then
+            echo "[I] ${DB_FILE} already exists, leaving it be."
+        fi
+        return 0
+    else
+        # if not, create it
+        if [[ "${DEBUG_ON}" -ne 0 ]]; then
+            echo "[I] Creating ${DB_FILE}"
+        fi
+        sqlite3 ${DB_FILE} ${DB_STRUCTURE}
+    fi
+
+}
+
 # Create local mirror if it does not already exist
 create_local_mirror() {
 
@@ -189,6 +279,11 @@ read -r REPLY
 # Configuration: Custom user settings
 ##############################################################
 
+# Controls whether verbose info is generated as the script
+# runs. Useful when first deploying the script, less so once
+# it has run reliably for some time.
+DEBUG_ON=1
+
 # Formats that are built for each branch and for latest tag.
 declare -a formats
 formats=(
@@ -204,6 +299,18 @@ local_mirror="$HOME/rsyslog/rsyslog-doc-mirror.git"
 # in order to reduce the load on the remote repo.
 temp_repo="$HOME/rsyslog/builds/rsyslog-doc"
 
+# Schema for database.
+# TODO: Update based off of notes.
+database_structure="CREATE TABLE branch_builds (id INTEGER PRIMARY KEY, package TEXT, time TIMESTAMP NOT NULL DEFAULT (datetime('now','localtime')));"
+
+# In which field in the database is the branch commit hash stored?
+database_branch_commit_field=2
+
+database_file="$HOME/rsyslog/state/branch_builds.db"
+
+# FIXME: Create Bash function instead of using external dirname tool?
+database_file_dir=$(dirname ${DB_FILE})
+
 
 ##############################################################
 # Auto-Configuration: No user modifications past this point
@@ -214,8 +321,12 @@ temp_repo="$HOME/rsyslog/builds/rsyslog-doc"
 IFS=$'\n'
 
 
+# Create SQLite DB to state for branch builds (if it doesn't already exist)
+initialize_db
+
 # Create local mirror of remote Git repo to be used as source of
-# frequent local builds.
+# frequent local builds. If the local mirror already exists,
+# we attempt to sync it against the remote repo instead.
 create_local_mirror $local_mirror $remote_repo
 
 # Generates a clone from a local mirror of a remote Git repo
