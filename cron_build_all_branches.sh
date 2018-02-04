@@ -20,7 +20,7 @@ set -o pipefail
 # to a variable via stdout
 echoerr() { echo -e "$@" 1>&2; }
 
-record_reported_patches() {
+record_build_details() {
 
     # $@ is ALL arguments to this function, i.e., the unreported patches
     updates=(${@})
@@ -34,7 +34,10 @@ record_reported_patches() {
 
 }
 
-is_patch_already_reported() {
+# If the branch has already been built then the HEAD commit hash will have
+# been recorded. If it is not found, we assume that the latest changes
+# to the branch have not been processed yet.
+is_branch_fresh() {
 
     # $1 should equal the quoted patch that we're checking
     # By this point it should have already been cleaned by sanitize_string()
