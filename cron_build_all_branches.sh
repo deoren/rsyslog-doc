@@ -11,6 +11,19 @@ set -e
 set -o pipefail
 
 
+
+#
+# TODO:
+#
+#   * Review db schema again
+#   * Review https://raw.githubusercontent.com/rsyslog/rsyslog-website/master/tools/gendoc/gendoc.sh
+#     for ideas to incorporate here
+#   * Fix is_branch_fresh() function (placeholders still used)
+#   * Fix record_build_details() function (placeholders still used)
+#   * Reverse course from setting up local mirrors and using them
+#     to perform fresh clones for each build. This overcomplicates things.
+
+
 ##############################################################
 # Functions
 ##############################################################
@@ -299,19 +312,18 @@ formats=(
 )
 
 remote_repo="https://github.com/deoren/rsyslog-doc"
-local_mirror="$HOME/rsyslog/rsyslog-doc-mirror.git"
-
-# Full path to the local clone that will be recreated for each
-# run of this build script. We pull from the local mirror
-# in order to reduce the load on the remote repo.
-temp_repo="$HOME/rsyslog/builds/rsyslog-doc"
 
 # Schema for database.
 # TODO: Update based off of notes.
-database_structure="CREATE TABLE branch_builds (id INTEGER PRIMARY KEY, package TEXT, time TIMESTAMP NOT NULL DEFAULT (datetime('now','localtime')));"
+database_structure="CREATE TABLE branch_builds (id INTEGER PRIMARY KEY, fork TEXT, branch TEXT, commit TEXT, status INT, start TIMESTAMP NOT NULL DEFAULT (datetime('now','localtime')), end TIMESTAMP NOT NULL DEFAULT (datetime('now','localtime')));"
+#
+# status:
+# 0 = success
+# 1 = failure
+# 2 = running
 
 # In which field in the database is the branch commit hash stored?
-database_branch_commit_field=2
+database_branch_commit_field=4
 
 database_file="$HOME/rsyslog/state/branch_builds.db"
 
